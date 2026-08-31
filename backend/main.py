@@ -3,6 +3,7 @@ import requests
 import os
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
+from database import init_db, save_player_stats, get_player_history
 
 # Load environment variables and initialize the FastAPI app
 load_dotenv()
@@ -18,10 +19,26 @@ app.add_middleware(
 
 gc_cookie = os.getenv("GC_COOKIE")
 
+init_db()
+
 @app.get("/")
 def read_root():
     # Returning a welcome JSON
     return {"message": "Welcome to the CS2 Metrics Hub API!", "status": "Online"}
+
+# NEW ROUTE: Get all historical stats for a player from our database
+@app.get("/api/history/{player_id}") # (ou @app.get, dependendo de como está o seu)
+def get_history(player_id: str):
+    history_data = get_player_history(player_id)
+    
+    if not history_data:
+        raise HTTPException(status_code=404, detail="No history found for this player")
+        
+    return {
+        "player_id": player_id,
+        "total_records": len(history_data),
+        "history": history_data
+    }
 
 # 1. Updated endpoint to require both player_id AND date
 @app.get("/api/player/{player_id}/{date}")
@@ -90,8 +107,8 @@ def get_player_stats(player_id: str, date: str):
     mechanics_rating = round((hs_score * 0.50) + (kdr_score * 0.25) + (adr_score * 0.25), 2)
     impact_rating = round((kdr_score * 0.40) + (adr_score * 0.40) + (hs_score * 0.20), 2)
 
-    # 8. Return the final results as a JSON dictionary
-    return {
+    # 8. Pack the result into a clean dictionary
+    result = {
         "player_id": player_id,
         "date_analyzed": date,
         "matches_played": total_matches,
@@ -107,3 +124,8 @@ def get_player_stats(player_id: str, date: str):
             "impact": impact_rating
         }
     }
+
+    save_player_stats(result)
+
+    return result
+    
